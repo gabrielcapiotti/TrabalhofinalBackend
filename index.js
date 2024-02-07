@@ -1,5 +1,6 @@
 import express from 'express';
 import cors from 'cors';
+import bcrypt from 'bcrypt';
 
 const app = express();
 app.use(cors());
@@ -10,10 +11,8 @@ let notas = [];
 let contadorUsuarioId = 1;
 let contadorNotasId = 1;
 
-//API
-
 // Rota de criação de conta do usuário
-app.post('/usuarios', (req, res) => {
+app.post('/usuarios', async (req, res) => {
     const { nome, email, senha } = req.body;
 
     // Verificar se todos os campos necessários foram fornecidos
@@ -27,12 +26,15 @@ app.post('/usuarios', (req, res) => {
         return res.status(400).json({ message: 'Email já cadastrado!' });
     }
 
+    // Criptografar a senha antes de armazenar
+    const criptografaSenha = await bcrypt.hash(senha, 10);
+
     // Criar um novo usuário
     const novoUsuario = {
         id: contadorUsuarioId++,
         nome,
         email,
-        senha
+        senha: criptografaSenha
     };
 
     // Adicionar o novo usuário à lista de usuários
@@ -46,66 +48,42 @@ app.post('/usuarios', (req, res) => {
 // Rota de realização de login
 app.post('/login', (req, res) => {
     const { email, senha } = req.body;
-    const usuario = usuarios.find(usuario => usuario.email === email && usuario.senha === senha);
-    if (usuario) {
-        res.json({ message: 'Login feito com sucesso!', usuario });
-    } else {
-        res.status(401).json({ message: 'Senha inválida!' });
-    }
-});
+    const usuario = usuarios.find(usuario => usuario.email === email);
 
-// Rota para obter a lista de usuários
-app.get('/usuariosLista', (req, res) => {
-    return res.status(200).json({
-        success: true,
-        message: 'Lista de usuários retornada com sucesso!',
-        data: usuarios
-    });
-});
-
-
-// Rota para atualizar informações da conta do usuário
-app.put('/usuariosAtualizar/:id', (req, res) => {
-    const { id } = req.params;
-    const { nome, email, senha } = req.body;
-
-    // Encontrar o usuário pelo ID
-    const usuario = usuarios.find(usuario => usuario.id === parseInt(id));
-
-    // Verificar se o usuário existe
     if (!usuario) {
         return res.status(404).json({ message: 'Usuário não encontrado!' });
     }
 
-    // Atualizar as informações do usuário
-    usuario.nome = nome || usuario.nome;
-    usuario.email = email || usuario.email;
-    usuario.senha = senha || usuario.senha;
-
-    // Retornar o usuário atualizado
-    res.json({ message: 'Informações da conta atualizadas com sucesso!', usuario });
-});
-
-// Rota para deletar um usuário pelo ID
-app.delete('/usuariosDeletar/:id', (req, res) => {
-    const id = parseInt(req.params.id);
-    const usuarioIndex = usuarios.findIndex(usuario => usuario.id === id);
-    if (usuarioIndex !== -1) {
-        usuarios.splice(usuarioIndex, 1);
-        res.status(200).json({ message: 'Usuário deletado com sucesso!' });
-    } else {
-        res.status(404).json({ message: 'Usuário não encontrado!' });
-    }
+    // Comparar a senha fornecida com a senha criptografada armazenada
+    bcrypt.compare(senha, usuario.senha, (err, result) => {
+        if (err) {
+            return res.status(500).json({ message: 'Erro ao comparar as senhas!' });
+        }
+        if (result) {
+            // Senha correta
+            res.status(200).json({ success: true, message: 'Login feito com sucesso!', usuario });
+        } else {
+            // Senha incorreta
+            res.status(401).json({ message: 'Senha inválida!' });
+        }
+    });
 });
 
 // Rota para criar novo recado
 app.post('/notas', (req, res) => {
     const { titulo, descricao } = req.body;
+
+    // Verificar se todos os campos necessários foram fornecidos
+    if (!titulo || !descricao) {
+        return res.status(400).json({ message: 'Por favor, forneça título e descrição do recado.' });
+    }
+
     const novaNota = {
         id: contadorNotasId++,
         titulo,
         descricao
     };
+
     notas.push(novaNota);
     res.status(201).json(novaNota);
 });
